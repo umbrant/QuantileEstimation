@@ -27,14 +27,13 @@ public class QuantileEstimationGK {
   // Acceptable % error in percentile estimate
   final double epsilon;
   // Total number of items in stream
-  final int N;
-  // Number of samples to keep
-  final int max_samples;
-
-  public QuantileEstimationGK(int window_size, double epsilon) {
-    this.N = window_size;
+  int count = 0;
+  // Threshold to trigger a compaction
+  final int compact_size;
+  
+  public QuantileEstimationGK(double epsilon, int compact_size) {
+    this.compact_size = compact_size;
     this.epsilon = epsilon;
-    this.max_samples = window_size / 10;
   }
 
   List<Item> sample = Collections.synchronizedList(new LinkedList<Item>());
@@ -74,13 +73,16 @@ public class QuantileEstimationGK {
     if (idx == 0 || idx == sample.size()) {
       newItem.delta = 0;
     } else {
-      newItem.delta = (int) Math.floor(2 * epsilon * N);
+      newItem.delta = (int) Math.floor(2 * epsilon * count);
     }
 
     sample.add(idx, newItem);
-    printList();
-    compress();
-    printList();
+    if(sample.size() > compact_size) {
+      printList();
+      compress();
+      printList();
+    }
+    this.count++;
   }
 
   public void compress() {
@@ -92,7 +94,7 @@ public class QuantileEstimationGK {
 
       // Merge the items together if we don't need it to maintain the
       // error bound
-      if (item.g + item1.g + item1.delta <= Math.floor(2 * epsilon * N)) {
+      if (item.g + item1.g + item1.delta <= Math.floor(2 * epsilon * count)) {
         item1.g += item.g;
         sample.remove(i);
         removed++;
@@ -103,7 +105,7 @@ public class QuantileEstimationGK {
 
   public long query(double quantile) {
     int rankMin = 0;
-    int desired = (int) (quantile * N);
+    int desired = (int) (quantile * count);
 
     for (int i = 1; i < sample.size(); i++) {
       Item prev = sample.get(i - 1);
@@ -111,7 +113,7 @@ public class QuantileEstimationGK {
 
       rankMin += prev.g;
 
-      if (rankMin + cur.g + cur.delta > desired + (2 * epsilon * N)) {
+      if (rankMin + cur.g + cur.delta > desired + (2 * epsilon * count)) {
         return prev.value;
       }
     }
@@ -122,7 +124,7 @@ public class QuantileEstimationGK {
 
   public static void main(String[] args) {
 
-    final int window_size = 20;
+    final int window_size = 10000;
     final double epsilon = 0.001;
 
     LOG.info("Generating random longs...");
@@ -134,8 +136,7 @@ public class QuantileEstimationGK {
     Collections.shuffle(Arrays.asList(shuffle), rand);
 
     LOG.info("Inserting into estimator...");
-    QuantileEstimationGK estimator = new QuantileEstimationGK(window_size,
-        epsilon);
+    QuantileEstimationGK estimator = new QuantileEstimationGK(epsilon, 1000);
     for (long l : shuffle) {
       estimator.insert(l);
     }
