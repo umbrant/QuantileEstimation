@@ -1,4 +1,5 @@
 package com.umbrant.quantile;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -35,8 +36,6 @@ public class QuantileEstimationCKMS {
     LOG.setLevel(Level.INFO);
   }
 
-  // Acceptable % error in percentile estimate
-  final double epsilon;
   // Total number of items in stream
   int count = 0;
   // Threshold to trigger a compaction
@@ -45,10 +44,8 @@ public class QuantileEstimationCKMS {
   List<Item> sample = Collections.synchronizedList(new LinkedList<Item>());
   final Quantile quantiles[];
 
-  public QuantileEstimationCKMS(double epsilon, int compact_size,
-      Quantile[] quantiles) {
+  public QuantileEstimationCKMS(int compact_size, Quantile[] quantiles) {
     this.compact_size = compact_size;
-    this.epsilon = epsilon;
     this.quantiles = quantiles;
   }
 
@@ -60,8 +57,34 @@ public class QuantileEstimationCKMS {
    * 
    * @param rank
    */
-  private void allowableError(int rank) {
+  private double allowableError(int rank) {
+    /*
+    double min = 1.0;
+    for(Quantile q: quantiles) {
+      if(q.error < min) {
+        min = q.error;
+      }
+    }
+    return 2 * min * sample.size();
+    */
+    
+    
+    int size = sample.size();
+    double minError = size + 1;
+    for (Quantile q : quantiles) {
+      double error;
+      if (rank <= q.quantile * size) {
+        error = (2 * q.error * (size - rank)) / (1 - q.quantile);
+      } else {
+        error = (2 * q.error * rank) / q.quantile;
+      }
+      if (error < minError) {
+        minError = error;
+      }
+    }
 
+    return minError;
+    
   }
 
   private void printList() {
@@ -85,12 +108,12 @@ public class QuantileEstimationCKMS {
     if (idx == 0 || idx == sample.size()) {
       delta = 0;
     } else {
-      delta = (int) Math.floor(2 * epsilon * count);
+      delta = ((int)Math.floor(allowableError(idx)))-1;
     }
 
     Item newItem = new Item(v, 1, delta);
     sample.add(idx, newItem);
-    
+
     if (sample.size() > compact_size) {
       printList();
       compress();
@@ -108,7 +131,7 @@ public class QuantileEstimationCKMS {
 
       // Merge the items together if we don't need it to maintain the
       // error bound
-      if (item.g + item1.g + item1.delta <= Math.floor(2 * epsilon * count)) {
+      if (item.g + item1.g + item1.delta <= allowableError(i)) {
         item1.g += item.g;
         sample.remove(i);
         removed++;
@@ -127,7 +150,7 @@ public class QuantileEstimationCKMS {
 
       rankMin += prev.g;
 
-      if (rankMin + cur.g + cur.delta > desired + (2 * epsilon * count)) {
+      if (rankMin + cur.g + cur.delta > desired + allowableError(i)) {
         return prev.value;
       }
     }
@@ -139,7 +162,6 @@ public class QuantileEstimationCKMS {
   public static void main(String[] args) {
 
     final int window_size = 10000;
-    final double epsilon = 0.001;
     List<Quantile> quantiles = new ArrayList<Quantile>();
     quantiles.add(new Quantile(0.50, 0.050));
     quantiles.add(new Quantile(0.90, 0.010));
@@ -155,8 +177,8 @@ public class QuantileEstimationCKMS {
     Collections.shuffle(Arrays.asList(shuffle), rand);
 
     LOG.info("Inserting into estimator...");
-    QuantileEstimationCKMS estimator = new QuantileEstimationCKMS(epsilon,
-        1000, quantiles.toArray(new Quantile[] {}));
+    QuantileEstimationCKMS estimator = new QuantileEstimationCKMS(1000, 
+        quantiles.toArray(new Quantile[] {}));
     for (long l : shuffle) {
       estimator.insert(l);
     }
@@ -166,8 +188,8 @@ public class QuantileEstimationCKMS {
       long estimate = estimator.query(q);
       long actual = (long) ((q) * (window_size - 1));
       LOG.info(String.format(
-          "Estimated %.2f quantile as %d +- %.3f (actually %d)", q, estimate,
-          quantile.error, actual));
+          "Q(%.2f, %.3f) was %d (actually %d)", quantile.quantile, 
+          quantile.error, estimate, actual));
     }
     LOG.info("# of samples: " + estimator.sample.size());
   }
