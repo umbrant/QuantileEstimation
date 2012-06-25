@@ -1,3 +1,5 @@
+package com.umbrant.quantile;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -9,16 +11,25 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 /**
- * Implementation of the Greenwald and Khanna algorithm for streaming
- * calculation of epsilon-approximate quantiles.
+ * Implementation of the Cormode, Korn, Muthukrishnan, and Srivastava algorithm
+ * for streaming calculation of targeted high-percentile epsilon-approximate
+ * quantiles.
  * 
- * See: Greenwald and Khanna,
+ * This is a generalization of the earlier work by Greenwald and Khanna (GK),
+ * which essentially allows different error bounds on the targeted quantiles,
+ * which allows for far more efficient calculation of high-percentiles.
+ * 
+ * 
+ * See: Cormode, Korn, Muthukrishnan, and Srivastava
+ * "Effective Computation of Biased Quantiles over Data Streams" in ICDE 2005
+ * 
+ * Greenwald and Khanna,
  * "Space-efficient online computation of quantile summaries" in SIGMOD 2001
  * 
  */
-public class QuantileEstimationGK {
+public class QuantileEstimationCKMS {
 
-  private static Logger LOG = Logger.getLogger(QuantileEstimationGK.class);
+  private static Logger LOG = Logger.getLogger(QuantileEstimationCKMS.class);
   static {
     BasicConfigurator.configure();
     LOG.setLevel(Level.INFO);
@@ -30,25 +41,27 @@ public class QuantileEstimationGK {
   int count = 0;
   // Threshold to trigger a compaction
   final int compact_size;
-  
-  public QuantileEstimationGK(double epsilon, int compact_size) {
-    this.compact_size = compact_size;
-    this.epsilon = epsilon;
-  }
 
   List<Item> sample = Collections.synchronizedList(new LinkedList<Item>());
+  final Quantile quantiles[];
 
-  class Item {
+  public QuantileEstimationCKMS(double epsilon, int compact_size,
+      Quantile[] quantiles) {
+    this.compact_size = compact_size;
+    this.epsilon = epsilon;
+    this.quantiles = quantiles;
+  }
 
-    protected long value;
-    protected int g;
-    protected int delta;
+  /**
+   * Specifies the allowable error for this rank, depending on which quantiles
+   * are being targeted.
+   * 
+   * This is the f(r_i, n) function from the CKMS paper.
+   * 
+   * @param rank
+   */
+  private void allowableError(int rank) {
 
-    public Item(long value, int lower_delta, int delta) {
-      this.value = value;
-      this.g = lower_delta;
-      this.delta = delta;
-    }
   }
 
   private void printList() {
@@ -60,9 +73,7 @@ public class QuantileEstimationGK {
   }
 
   public void insert(long v) {
-    Item newItem = new Item(v, 1, 0);
     int idx = 0;
-
     for (Item i : sample) {
       if (i.value > v) {
         break;
@@ -70,14 +81,17 @@ public class QuantileEstimationGK {
       idx++;
     }
 
+    int delta;
     if (idx == 0 || idx == sample.size()) {
-      newItem.delta = 0;
+      delta = 0;
     } else {
-      newItem.delta = (int) Math.floor(2 * epsilon * count);
+      delta = (int) Math.floor(2 * epsilon * count);
     }
 
+    Item newItem = new Item(v, 1, delta);
     sample.add(idx, newItem);
-    if(sample.size() > compact_size) {
+    
+    if (sample.size() > compact_size) {
       printList();
       compress();
       printList();
@@ -126,6 +140,11 @@ public class QuantileEstimationGK {
 
     final int window_size = 10000;
     final double epsilon = 0.001;
+    List<Quantile> quantiles = new ArrayList<Quantile>();
+    quantiles.add(new Quantile(0.50, 0.050));
+    quantiles.add(new Quantile(0.90, 0.010));
+    quantiles.add(new Quantile(0.95, 0.005));
+    quantiles.add(new Quantile(0.99, 0.001));
 
     LOG.info("Generating random longs...");
     long[] shuffle = new long[window_size];
@@ -136,17 +155,19 @@ public class QuantileEstimationGK {
     Collections.shuffle(Arrays.asList(shuffle), rand);
 
     LOG.info("Inserting into estimator...");
-    QuantileEstimationGK estimator = new QuantileEstimationGK(epsilon, 1000);
+    QuantileEstimationCKMS estimator = new QuantileEstimationCKMS(epsilon,
+        1000, quantiles.toArray(new Quantile[] {}));
     for (long l : shuffle) {
       estimator.insert(l);
     }
 
-    double[] quantiles = { 0.5, 0.9, 0.95, 0.99, 1.0 };
-    for (double q : quantiles) {
+    for (Quantile quantile : quantiles) {
+      double q = quantile.quantile;
       long estimate = estimator.query(q);
       long actual = (long) ((q) * (window_size - 1));
-      LOG.info(String.format("Estimated %.2f quantile as %d (actually %d)", q,
-          estimate, actual));
+      LOG.info(String.format(
+          "Estimated %.2f quantile as %d +- %.3f (actually %d)", q, estimate,
+          quantile.error, actual));
     }
     LOG.info("# of samples: " + estimator.sample.size());
   }

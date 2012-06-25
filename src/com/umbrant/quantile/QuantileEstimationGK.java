@@ -1,3 +1,4 @@
+package com.umbrant.quantile;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -9,26 +10,16 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 /**
- * Implementation of the Cormode, Korn, Muthukrishnan, and Srivastava algorithm
- * for streaming calculation of targeted high-percentile epsilon-approximate
- * quantiles.
+ * Implementation of the Greenwald and Khanna algorithm for streaming
+ * calculation of epsilon-approximate quantiles.
  * 
- * This is a generalization of the earlier work by Greenwald and Khanna (GK),
- * which essentially allows different error bounds on the targeted quantiles,
- * which allows for far more efficient calculation of high-percentiles.
- * 
- * 
- * See:
- * Cormode, Korn, Muthukrishnan, and Srivastava
- * "Effective Computation of Biased Quantiles over Data Streams" in ICDE 2005
- * 
- * Greenwald and Khanna,
+ * See: Greenwald and Khanna,
  * "Space-efficient online computation of quantile summaries" in SIGMOD 2001
  * 
  */
-public class QuantileEstimationCKMS {
+public class QuantileEstimationGK {
 
-  private static Logger LOG = Logger.getLogger(QuantileEstimationCKMS.class);
+  private static Logger LOG = Logger.getLogger(QuantileEstimationGK.class);
   static {
     BasicConfigurator.configure();
     LOG.setLevel(Level.INFO);
@@ -41,25 +32,12 @@ public class QuantileEstimationCKMS {
   // Threshold to trigger a compaction
   final int compact_size;
   
-  public QuantileEstimationCKMS(double epsilon, int compact_size) {
+  public QuantileEstimationGK(double epsilon, int compact_size) {
     this.compact_size = compact_size;
     this.epsilon = epsilon;
   }
 
   List<Item> sample = Collections.synchronizedList(new LinkedList<Item>());
-
-  class Item {
-
-    protected long value;
-    protected int g;
-    protected int delta;
-
-    public Item(long value, int lower_delta, int delta) {
-      this.value = value;
-      this.g = lower_delta;
-      this.delta = delta;
-    }
-  }
 
   private void printList() {
     StringBuffer buf = new StringBuffer();
@@ -70,7 +48,6 @@ public class QuantileEstimationCKMS {
   }
 
   public void insert(long v) {
-    Item newItem = new Item(v, 1, 0);
     int idx = 0;
 
     for (Item i : sample) {
@@ -80,13 +57,16 @@ public class QuantileEstimationCKMS {
       idx++;
     }
 
+    int delta;
     if (idx == 0 || idx == sample.size()) {
-      newItem.delta = 0;
+      delta = 0;
     } else {
-      newItem.delta = (int) Math.floor(2 * epsilon * count);
+      delta = (int) Math.floor(2 * epsilon * count);
     }
-
+    
+    Item newItem = new Item(v, 1, delta);
     sample.add(idx, newItem);
+    
     if(sample.size() > compact_size) {
       printList();
       compress();
@@ -146,7 +126,7 @@ public class QuantileEstimationCKMS {
     Collections.shuffle(Arrays.asList(shuffle), rand);
 
     LOG.info("Inserting into estimator...");
-    QuantileEstimationCKMS estimator = new QuantileEstimationCKMS(epsilon, 1000);
+    QuantileEstimationGK estimator = new QuantileEstimationGK(epsilon, 1000);
     for (long l : shuffle) {
       estimator.insert(l);
     }
