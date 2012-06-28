@@ -117,33 +117,6 @@ public class QuantileEstimationCKMS {
    * @param v
    */
   public void insert(long v) {
-    /*
-    int idx = 0;
-    for (Item i : sample) {
-      if (i.value > v) {
-        break;
-      }
-      idx++;
-    }
-
-    int delta;
-    if (idx == 0 || idx == sample.size()) {
-      delta = 0;
-    } else {
-      delta = ((int) Math.floor(allowableError(idx))) - 1;
-    }
-
-    Item newItem = new Item(v, 1, delta);
-    sample.add(idx, newItem);
-
-    if (sample.size() % compact_size == 0) {
-      printList();
-      compress();
-      printList();
-    }
-    this.count++;
-    */
-    
     buffer[bufferCount] = v;
     bufferCount++;
     printBuffer();
@@ -154,7 +127,6 @@ public class QuantileEstimationCKMS {
       insertBatch();
       compress();
     }
-    
   }
   
   private void insertBatch() {
@@ -229,7 +201,7 @@ public class QuantileEstimationCKMS {
       
       if(prev.g + next.g + next.delta <= allowableError(it.previousIndex())) {
         next.g += prev.g;
-        // Remove prev
+        // Remove prev. it.remove() kills the last thing returned.
         it.previous();
         it.previous();
         it.remove();
@@ -238,22 +210,6 @@ public class QuantileEstimationCKMS {
         removed++;
       }
     }
-    
-    /*
-    // This is bugged since the iterator gets messed up by the remove() call
-    for (int i = 0; i < sample.size() - 1; i++) {
-      Item item = sample.get(i);
-      Item item1 = sample.get(i + 1);
-
-      // Merge the items together if we don't need it to maintain the
-      // error bound
-      if (item.g + item1.g + item1.delta <= allowableError(i)) {
-        item1.g += item.g;
-        sample.remove(i);
-        removed++;
-      }
-    }
-    */
     
     LOG.debug("Removed " + removed + " items");
   }
