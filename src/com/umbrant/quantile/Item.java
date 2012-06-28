@@ -10,4 +10,9 @@ public class Item {
     this.g = lower_delta;
     this.delta = delta;
   }
+  
+  @Override
+  public String toString() {
+    return String.format("%d, %d, %d", value, g, delta);
+  }
 }
