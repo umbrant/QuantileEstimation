@@ -40,7 +40,7 @@ public class QuantileEstimationCKMS {
 
   // Total number of items in stream
   int count = 0;
-  
+
   // Used for tracking incremental compression
   private int compressIdx = 0;
 
@@ -64,13 +64,14 @@ public class QuantileEstimationCKMS {
   }
 
   /**
-   * Specifies the allowable error for this rank, depending on which
-   * quantiles are being targeted.
+   * Specifies the allowable error for this rank, depending on which quantiles
+   * are being targeted.
    * 
    * This is the f(r_i, n) function from the CKMS paper. It's basically how wide
    * the range of this rank can be.
    * 
-   * @param rank the index in the list of samples
+   * @param rank
+   *          the index in the list of samples
    */
   private double allowableError(int rank) {
     int size = sample.size();
@@ -120,52 +121,51 @@ public class QuantileEstimationCKMS {
     buffer[bufferCount] = v;
     bufferCount++;
     printBuffer();
-    
+
     count++;
-    
-    if(bufferCount == buffer.length) {
+
+    if (bufferCount == buffer.length) {
       insertBatch();
       compress();
     }
   }
-  
+
   private void insertBatch() {
     LOG.debug("insertBatch called");
 
-    if(bufferCount == 0) {
+    if (bufferCount == 0) {
       return;
     }
     printList();
-    
+
     Arrays.sort(buffer, 0, bufferCount);
     printBuffer();
-    
+
     // Base case: no samples
     int start = 0;
-    if(sample.size() == 0) {
+    if (sample.size() == 0) {
       Item newItem = new Item(buffer[0], 1, 0);
       sample.add(newItem);
       start++;
     }
-    
+
     ListIterator<Item> it = sample.listIterator();
     Item item = it.next();
-    for(int i=start; i<bufferCount; i++) {
+    for (int i = start; i < bufferCount; i++) {
       long v = buffer[i];
-      while(it.nextIndex() < sample.size() && item.value < v) {
+      while (it.nextIndex() < sample.size() && item.value < v) {
         item = it.next();
       }
       // If we found that bigger item, back up so we insert ourselves before it
-      if(item.value > v) {
+      if (item.value > v) {
         it.previous();
       }
       // We use different indexes for the edge comparisons, because of the above
       // if statement that adjusts the iterator
       int delta;
-      if(it.previousIndex() == 0 || it.nextIndex() == sample.size()) {
+      if (it.previousIndex() == 0 || it.nextIndex() == sample.size()) {
         delta = 0;
-      }
-      else {
+      } else {
         delta = ((int) Math.floor(allowableError(it.nextIndex()))) - 1;
       }
       Item newItem = new Item(v, 1, delta);
@@ -173,7 +173,7 @@ public class QuantileEstimationCKMS {
       item = newItem;
       printList();
     }
-    
+
     bufferCount = 0;
     printList();
     LOG.debug("insertBatch finished");
@@ -185,21 +185,21 @@ public class QuantileEstimationCKMS {
    * with the adjacent item if it is.
    */
   public void compress() {
-    
-    if(sample.size() < 2) {
+
+    if (sample.size() < 2) {
       return;
     }
-    
+
     ListIterator<Item> it = sample.listIterator();
     int removed = 0;
 
     Item prev = null;
     Item next = it.next();
-    while(it.hasNext()) {
+    while (it.hasNext()) {
       prev = next;
       next = it.next();
-      
-      if(prev.g + next.g + next.delta <= allowableError(it.previousIndex())) {
+
+      if (prev.g + next.g + next.delta <= allowableError(it.previousIndex())) {
         next.g += prev.g;
         // Remove prev. it.remove() kills the last thing returned.
         it.previous();
@@ -210,25 +210,27 @@ public class QuantileEstimationCKMS {
         removed++;
       }
     }
-    
+
     LOG.debug("Removed " + removed + " items");
   }
 
   /**
    * Get the estimated value at the specified quantile.
    * 
-   * @param quantile Queried quantile, e.g. 0.50 or 0.99.
+   * @param quantile
+   *          Queried quantile, e.g. 0.50 or 0.99.
    * @return Estimated value at that quantile.
    */
   public long query(double quantile) throws IOException {
 
     // clear the buffer
     insertBatch();
-    
-    if(sample.size() == 0) {
+    compress();
+
+    if (sample.size() == 0) {
       throw new IOException("No samples present");
     }
-    
+
     int rankMin = 0;
     int desired = (int) (quantile * count);
 
@@ -238,7 +240,7 @@ public class QuantileEstimationCKMS {
 
       rankMin += prev.g;
 
-      if (rankMin + cur.g + cur.delta > desired + (allowableError(i)/2)) {
+      if (rankMin + cur.g + cur.delta > desired + (allowableError(i) / 2)) {
         return prev.value;
       }
     }
@@ -251,30 +253,29 @@ public class QuantileEstimationCKMS {
 
     final int window_size = 1000000;
     boolean generator = false;
-    
+
     List<Quantile> quantiles = new ArrayList<Quantile>();
     quantiles.add(new Quantile(0.50, 0.050));
     quantiles.add(new Quantile(0.90, 0.010));
     quantiles.add(new Quantile(0.95, 0.005));
     quantiles.add(new Quantile(0.99, 0.001));
-    
+
     QuantileEstimationCKMS estimator = new QuantileEstimationCKMS(
         quantiles.toArray(new Quantile[] {}));
-    
+
     LOG.info("Inserting into estimator...");
-    
+
     long startTime = System.currentTimeMillis();
     Random rand = new Random(0xDEADBEEF);
-    
-    if(generator) {
-      for(int i=0; i<window_size; i++) {
+
+    if (generator) {
+      for (int i = 0; i < window_size; i++) {
         estimator.insert(rand.nextLong());
       }
-    }
-    else {
+    } else {
       Long[] shuffle = new Long[window_size];
       for (int i = 0; i < shuffle.length; i++) {
-        shuffle[i] = (long)i;
+        shuffle[i] = (long) i;
       }
       Collections.shuffle(Arrays.asList(shuffle), rand);
       for (long l : shuffle) {
@@ -285,12 +286,12 @@ public class QuantileEstimationCKMS {
     for (Quantile quantile : quantiles) {
       double q = quantile.quantile;
       try {
-      long estimate = estimator.query(q);
-      long actual = (long) ((q) * (window_size - 1));
-      LOG.info(String.format("Q(%.2f, %.3f) was %d (off by %.3f)",
-          quantile.quantile, quantile.error, estimate,
-          ((double) Math.abs(actual - estimate)) / (double) window_size));
-      } catch(IOException e) {
+        long estimate = estimator.query(q);
+        long actual = (long) ((q) * (window_size - 1));
+        LOG.info(String.format("Q(%.2f, %.3f) was %d (off by %.3f)",
+            quantile.quantile, quantile.error, estimate,
+            ((double) Math.abs(actual - estimate)) / (double) window_size));
+      } catch (IOException e) {
         LOG.info("No samples were present, could not query quantile.");
       }
     }
