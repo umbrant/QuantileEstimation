@@ -122,8 +122,6 @@ public class QuantileEstimationCKMS {
     bufferCount++;
     printBuffer();
 
-    count++;
-
     if (bufferCount == buffer.length) {
       insertBatch();
       compress();
@@ -147,6 +145,7 @@ public class QuantileEstimationCKMS {
       Item newItem = new Item(buffer[0], 1, 0);
       sample.add(newItem);
       start++;
+      count++;
     }
 
     ListIterator<Item> it = sample.listIterator();
@@ -170,6 +169,7 @@ public class QuantileEstimationCKMS {
       }
       Item newItem = new Item(v, 1, delta);
       it.add(newItem);
+      count++;
       item = newItem;
       printList();
     }
@@ -249,6 +249,6 @@ public class QuantileEstimationCKMS {
     }
 
     // edge case of wanting max value
-    return sample.get(sample.size() - 1).value;
+    return sample.getLast().value;
   }
 }
