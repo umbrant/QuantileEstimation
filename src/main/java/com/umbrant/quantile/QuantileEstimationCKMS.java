@@ -74,6 +74,10 @@ public class QuantileEstimationCKMS {
    *          the index in the list of samples
    */
   private double allowableError(int rank) {
+    // NOTE: according to CKMS, this should be count, not size, but this leads
+    // to error larger than the error bounds. Leaving it like this is
+    // essentially a HACK, and blows up memory, but does "work".
+    //int size = count;
     int size = sample.size();
     double minError = size + 1;
     for (Quantile q : quantiles) {
