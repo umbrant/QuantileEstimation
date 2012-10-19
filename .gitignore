@@ -10,4 +10,5 @@
 *.war
 *.ear
 
+*.swp
 target
