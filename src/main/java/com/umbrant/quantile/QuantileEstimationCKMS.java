@@ -79,9 +79,9 @@ public class QuantileEstimationCKMS {
     for (Quantile q : quantiles) {
       double error;
       if (rank <= q.quantile * size) {
-        error = (2.0 * q.error * (size - rank)) / (1.0 - q.quantile);
+        error = q.u * (size - rank);
       } else {
-        error = (2.0 * q.error * rank) / q.quantile;
+        error = q.v * rank;
       }
       if (error < minError) {
         minError = error;
