@@ -19,3 +19,8 @@ I'm just trying to implement these and get a feel for what best suits my needs.
 
 * Cormode, Korn, Muthukrishnan, and Srivastava. "Effective Computation of Biased Quantiles over Data Streams" in ICDE 2005.
 * Greenwald and Khanna. "Space-efficient online computation of quantile summaries" in SIGMOD 2001.
+
+Contributors
+============
+
+Thanks to Vladimir Sitnikov (vlsi) for reading my CKMS implementation and finding and fixing a bunch of bugs.
