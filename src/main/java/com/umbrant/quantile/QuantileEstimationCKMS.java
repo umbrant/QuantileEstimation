@@ -234,13 +234,16 @@ public class QuantileEstimationCKMS {
     int rankMin = 0;
     int desired = (int) (quantile * count);
 
-    for (int i = 1; i < sample.size(); i++) {
-      Item prev = sample.get(i - 1);
-      Item cur = sample.get(i);
+    ListIterator<Item> it = sample.listIterator();
+    Item prev, cur;
+    cur = it.next();
+    while (it.hasNext()) {
+      prev = cur;
+      cur = it.next();
 
       rankMin += prev.g;
 
-      if (rankMin + cur.g + cur.delta > desired + (allowableError(i) / 2)) {
+      if (rankMin + cur.g + cur.delta > desired + (allowableError(desired) / 2)) {
         return prev.value;
       }
     }
