@@ -9,3 +9,5 @@
 *.jar
 *.war
 *.ear
+
+target
